@@ -135,20 +135,17 @@ RUN apt-get autoremove -y \
     && rm -rf /root/.cache \
     && journalctl --vacuum-time=1s 2>/dev/null || true
 
+# Install FVM (Flutter Version Management) as root
+ENV FVM_HOME=/opt/fvm
+RUN curl -fsSL https://fvm.app/install.sh | bash && \
+    mkdir -p $FVM_HOME && \
+    chmod 755 $FVM_HOME
+ENV PATH="/root/.pub-cache/bin:$FVM_HOME:$PATH"
+
 # Create non-root user
 RUN groupadd -r flutter -g 1000 && \
     useradd -r -u 1000 -g flutter -m -s /bin/bash flutter && \
-    chown -R flutter:flutter $FLUTTER_HOME $ANDROID_HOME $GRADLE_USER_HOME
-
-# Switch to non-root user for FVM installation
-USER flutter
-
-# Install FVM (Flutter Version Management) as non-root user
-RUN curl -fsSL https://fvm.app/install.sh | bash || true
-ENV PATH="/home/flutter/.pub-cache/bin:$PATH"
-
-# Switch back to configure workspace
-USER root
+    chown -R flutter:flutter $FLUTTER_HOME $ANDROID_HOME $GRADLE_USER_HOME $FVM_HOME
 
 # Create work directory
 WORKDIR /workspace
