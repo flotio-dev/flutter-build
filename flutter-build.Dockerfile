@@ -116,7 +116,7 @@ RUN git clone https://github.com/flutter/flutter.git -b ${FLUTTER_VERSION} $FLUT
     && rm -rf $FLUTTER_HOME/bin/cache/artifacts/fuchsia* \
     && rm -rf $FLUTTER_HOME/examples \
     && rm -rf $FLUTTER_HOME/dev/benchmarks
-    # Keep .git, gradle scripts (CMakeLists.txt), and essential build files
+# Keep .git, gradle scripts (CMakeLists.txt), and essential build files
 
 # Configure Gradle for better performance
 ENV GRADLE_USER_HOME=/opt/gradle
@@ -148,9 +148,10 @@ RUN groupadd -r flutter -g 1000 && \
     useradd -r -u 1000 -g flutter -m -s /bin/bash flutter && \
     chown -R flutter:flutter $FLUTTER_HOME $ANDROID_HOME $GRADLE_USER_HOME $FVM_HOME
 
-# Create work directory
+# Create work directory and outputs directory
 WORKDIR /workspace
-RUN chown flutter:flutter /workspace
+RUN mkdir -p /outputs && \
+    chown flutter:flutter /workspace /outputs
 
 # Copy build script
 COPY build.sh /usr/local/bin/build.sh
