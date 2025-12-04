@@ -46,10 +46,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     file \
     # For build performance
     ccache \
+    # For Python (required by AWS CLI)
+    python3 \
+    python3-pip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/* \
     && rm -rf /var/tmp/*
+
+# Install AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip" && \
+    unzip -q awscliv2.zip && \
+    ./aws/install && \
+    rm -rf awscliv2.zip aws && \
+    aws --version
 
 # Set Java environment
 ENV JAVA_HOME=/usr/lib/jvm/java-${JAVA_VERSION}-openjdk-${TARGETARCH}
@@ -145,7 +155,7 @@ WORKDIR /workspace
 RUN chown flutter:flutter /workspace
 
 # Copy build script
-COPY build/build.sh /usr/local/bin/build.sh
+COPY build.sh /usr/local/bin/build.sh
 RUN chmod +x /usr/local/bin/build.sh
 
 # Switch to non-root user

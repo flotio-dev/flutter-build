@@ -36,6 +36,12 @@ KEY_PROPERTIES_PATH="/workspace/android/key.properties"
 # Environment files directory
 ENV_FILES_DIR=${ENV_FILES_DIR:-"/env-files"}
 
+# AWS S3 configuration for artifact upload
+AWS_S3_BUCKET=${AWS_S3_BUCKET:-""}
+AWS_S3_PREFIX=${AWS_S3_PREFIX:-"builds"}
+AWS_REGION=${AWS_REGION:-"eu-west-1"}
+# AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY should be set via environment
+
 echo -e "${YELLOW}Build Configuration:${NC}"
 echo "  Git Repository: $GIT_REPO"
 echo "  Git Branch: $GIT_BRANCH"
@@ -44,10 +50,14 @@ echo "  Flutter Channel: $FLUTTER_CHANNEL"
 echo "  Platform: $PLATFORM"
 echo "  Build Mode: $BUILD_MODE"
 echo "  Build Target: $BUILD_TARGET"
+if [ -n "$AWS_S3_BUCKET" ]; then
+    echo "  AWS S3 Bucket: $AWS_S3_BUCKET"
+    echo "  AWS S3 Prefix: $AWS_S3_PREFIX"
+fi
 echo ""
 
 # Step 1: Clone repository
-echo -e "${GREEN}[1/7] Cloning repository...${NC}"
+echo -e "${GREEN}[1/8] Cloning repository...${NC}"
 if [ -n "$GIT_USERNAME" ] && [ -n "$GIT_PASSWORD" ]; then
     # Clone with authentication
     GIT_URL_WITH_AUTH=$(echo "$GIT_REPO" | sed "s|https://|https://${GIT_USERNAME}:${GIT_PASSWORD}@|")
@@ -66,7 +76,7 @@ else
 fi
 
 # Step 2: Detect and install required Flutter version
-echo -e "${GREEN}[2/7] Detecting required Flutter/Dart version...${NC}"
+echo -e "${GREEN}[2/8] Detecting required Flutter/Dart version...${NC}"
 
 # Function to extract version constraint from pubspec.yaml
 detect_flutter_version() {
@@ -191,7 +201,7 @@ install_compatible_flutter() {
 detect_flutter_version
 
 # Step 3: Process environment files
-echo -e "${GREEN}[3/7] Processing environment files...${NC}"
+echo -e "${GREEN}[3/8] Processing environment files...${NC}"
 if [ -d "$ENV_FILES_DIR" ] && [ "$(ls -A $ENV_FILES_DIR)" ]; then
     echo "  Found environment files to process:"
     for file in "$ENV_FILES_DIR"/*; do
@@ -217,7 +227,7 @@ fi
 
 # Step 4: Setup Android keystore if provided
 if [ "$PLATFORM" = "android" ] && [ -f "$KEYSTORE_PATH" ]; then
-    echo -e "${GREEN}[4/7] Setting up Android keystore...${NC}"
+    echo -e "${GREEN}[4/8] Setting up Android keystore...${NC}"
 
     # Create key.properties file
     mkdir -p "$(dirname "$KEY_PROPERTIES_PATH")"
@@ -238,15 +248,15 @@ EOF
         fi
     fi
 else
-    echo -e "${GREEN}[4/7] Skipping keystore setup${NC}"
+    echo -e "${GREEN}[4/8] Skipping keystore setup${NC}"
 fi
 
 # Step 5: Get Flutter dependencies
-echo -e "${GREEN}[5/7] Getting Flutter dependencies...${NC}"
+echo -e "${GREEN}[5/8] Getting Flutter dependencies...${NC}"
 flutter pub get
 
 # Step 6: Build the application
-echo -e "${GREEN}[6/7] Building Flutter application...${NC}"
+echo -e "${GREEN}[6/8] Building Flutter application...${NC}"
 
 case "$PLATFORM" in
     android)
@@ -316,7 +326,7 @@ case "$PLATFORM" in
 esac
 
 # Step 7: Generate build info
-echo -e "${GREEN}[7/7] Generating build information...${NC}"
+echo -e "${GREEN}[7/8] Generating build information...${NC}"
 cat > "$OUTPUT_DIR/build-info.json" << EOF
 {
   "build_id": "${BUILD_ID}",
@@ -328,9 +338,46 @@ cat > "$OUTPUT_DIR/build-info.json" << EOF
   "git_branch": "${GIT_BRANCH}",
   "build_folder": "${BUILD_FOLDER}",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "flutter_version": "$(flutter --version | head -n 1)"
+  "flutter_version": "$(flutter --version | head -n 1)",
+  "s3_bucket": "${AWS_S3_BUCKET:-null}",
+  "s3_prefix": "${AWS_S3_PREFIX}"
 }
 EOF
+
+# Step 8: Upload to AWS S3 (if configured)
+if [ -n "$AWS_S3_BUCKET" ]; then
+    echo -e "${GREEN}[8/8] Uploading artifacts to AWS S3...${NC}"
+    
+    # Check if AWS credentials are configured
+    if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+        echo -e "${YELLOW}  ⚠ AWS credentials not set via environment variables${NC}"
+        echo "  Checking for IAM role or other credential sources..."
+    fi
+    
+    S3_PATH="s3://${AWS_S3_BUCKET}/${AWS_S3_PREFIX}/${BUILD_ID}"
+    
+    echo "  Uploading to: $S3_PATH"
+    
+    # Upload all files in output directory
+    if aws s3 cp "$OUTPUT_DIR" "$S3_PATH" --recursive --region "$AWS_REGION"; then
+        echo "  ✓ Artifacts uploaded successfully to S3"
+        
+        # Generate and display download URLs
+        echo ""
+        echo -e "${YELLOW}Artifact URLs:${NC}"
+        for file in "$OUTPUT_DIR"/*; do
+            if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                echo "  https://${AWS_S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${AWS_S3_PREFIX}/${BUILD_ID}/${filename}"
+            fi
+        done
+    else
+        echo -e "${RED}  ✗ Failed to upload artifacts to S3${NC}"
+        echo "  Build artifacts are still available locally in: $OUTPUT_DIR"
+    fi
+else
+    echo -e "${GREEN}[8/8] Skipping S3 upload (AWS_S3_BUCKET not configured)${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}===========================================${NC}"
