@@ -36,10 +36,11 @@ KEY_PROPERTIES_PATH="/workspace/android/key.properties"
 # Environment files directory
 ENV_FILES_DIR=${ENV_FILES_DIR:-"/env-files"}
 
-# AWS S3 configuration for artifact upload
+# AWS S3 configuration for artifact upload (S3-compatible providers like Garage, MinIO, etc.)
 AWS_S3_BUCKET=${AWS_S3_BUCKET:-""}
 AWS_S3_PREFIX=${AWS_S3_PREFIX:-"builds"}
-AWS_REGION=${AWS_REGION:-"eu-west-1"}
+AWS_S3_ENDPOINT=${AWS_S3_ENDPOINT:-""}  # Custom endpoint URL for S3-compatible providers (e.g., https://s3.garage.example.com)
+AWS_REGION=${AWS_REGION:-"garage"}       # Region (can be any value for Garage)
 # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY should be set via environment
 
 echo -e "${YELLOW}Build Configuration:${NC}"
@@ -51,8 +52,9 @@ echo "  Platform: $PLATFORM"
 echo "  Build Mode: $BUILD_MODE"
 echo "  Build Target: $BUILD_TARGET"
 if [ -n "$AWS_S3_BUCKET" ]; then
-    echo "  AWS S3 Bucket: $AWS_S3_BUCKET"
-    echo "  AWS S3 Prefix: $AWS_S3_PREFIX"
+    echo "  S3 Bucket: $AWS_S3_BUCKET"
+    echo "  S3 Prefix: $AWS_S3_PREFIX"
+    [ -n "$AWS_S3_ENDPOINT" ] && echo "  S3 Endpoint: $AWS_S3_ENDPOINT"
 fi
 echo ""
 
@@ -340,13 +342,14 @@ cat > "$OUTPUT_DIR/build-info.json" << EOF
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "flutter_version": "$(flutter --version | head -n 1)",
   "s3_bucket": "${AWS_S3_BUCKET:-null}",
-  "s3_prefix": "${AWS_S3_PREFIX}"
+  "s3_prefix": "${AWS_S3_PREFIX}",
+  "s3_endpoint": "${AWS_S3_ENDPOINT:-null}"
 }
 EOF
 
-# Step 8: Upload to AWS S3 (if configured)
+# Step 8: Upload to S3-compatible storage (if configured)
 if [ -n "$AWS_S3_BUCKET" ]; then
-    echo -e "${GREEN}[8/8] Uploading artifacts to AWS S3...${NC}"
+    echo -e "${GREEN}[8/8] Uploading artifacts to S3...${NC}"
     
     # Check if AWS credentials are configured
     if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -356,10 +359,17 @@ if [ -n "$AWS_S3_BUCKET" ]; then
     
     S3_PATH="s3://${AWS_S3_BUCKET}/${AWS_S3_PREFIX}/${BUILD_ID}"
     
+    # Build endpoint argument for S3-compatible providers (Garage, MinIO, etc.)
+    ENDPOINT_ARG=""
+    if [ -n "$AWS_S3_ENDPOINT" ]; then
+        ENDPOINT_ARG="--endpoint-url $AWS_S3_ENDPOINT"
+        echo "  Using custom S3 endpoint: $AWS_S3_ENDPOINT"
+    fi
+    
     echo "  Uploading to: $S3_PATH"
     
     # Upload all files in output directory
-    if aws s3 cp "$OUTPUT_DIR" "$S3_PATH" --recursive --region "$AWS_REGION"; then
+    if aws s3 cp "$OUTPUT_DIR" "$S3_PATH" --recursive --region "$AWS_REGION" $ENDPOINT_ARG; then
         echo "  ✓ Artifacts uploaded successfully to S3"
         
         # Generate and display download URLs
@@ -368,7 +378,13 @@ if [ -n "$AWS_S3_BUCKET" ]; then
         for file in "$OUTPUT_DIR"/*; do
             if [ -f "$file" ]; then
                 filename=$(basename "$file")
-                echo "  https://${AWS_S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${AWS_S3_PREFIX}/${BUILD_ID}/${filename}"
+                if [ -n "$AWS_S3_ENDPOINT" ]; then
+                    # Custom endpoint URL (Garage, MinIO, etc.)
+                    echo "  ${AWS_S3_ENDPOINT}/${AWS_S3_BUCKET}/${AWS_S3_PREFIX}/${BUILD_ID}/${filename}"
+                else
+                    # Standard AWS S3 URL
+                    echo "  https://${AWS_S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${AWS_S3_PREFIX}/${BUILD_ID}/${filename}"
+                fi
             fi
         done
     else
