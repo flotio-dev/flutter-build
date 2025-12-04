@@ -15,6 +15,7 @@ on:
       - 'build.sh'
 
 jobs:
+  # The build-and-push job remains largely the same.
   build-and-push:
     runs-on: ${{ matrix.runner }}
 
@@ -30,7 +31,7 @@ jobs:
 
     permissions:
       contents: read
-      packages: write
+      packages: write # Correctly set 'packages: write' permission
 
     steps:
       - name: Checkout repository
@@ -44,7 +45,8 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # Use GITHUB_TOKEN for internal actions, it has the write:packages scope
+          password: ${{ secrets.GITHUB_TOKEN }} 
 
       - name: Extract metadata
         id: meta
@@ -52,10 +54,13 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/flutter-build
           tags: |
+            # Only tag main/branch pushes with the architecture suffix
             type=ref,event=branch,suffix=-${{ matrix.arch }}
+            type=raw,value=latest-${{ matrix.arch }},enable={{is_default_branch}}
+            # Keep other tags for PRs/SHAs if needed
             type=ref,event=pr,suffix=-${{ matrix.arch }}
             type=sha,prefix={{branch}}-,suffix=-${{ matrix.arch }}
-            type=raw,value=latest-${{ matrix.arch }},enable={{is_default_branch}}
+
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -69,14 +74,20 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
+  ---
+
   create-manifest:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Only run on successful push to the main branch
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     permissions:
       contents: read
-      packages: write
+      packages: write # Correctly set 'packages: write' permission
+
+    env:
+      REPOSITORY: ghcr.io/${{ github.repository_owner }}/flutter-build
 
     steps:
       - name: Log in to GitHub Container Registry
@@ -88,11 +99,12 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
-          docker buildx imagetools create -t ghcr.io/${{ github.repository_owner }}/flutter-build:latest \
-            ghcr.io/${{ github.repository_owner }}/flutter-build:latest-amd64 \
-            ghcr.io/${{ github.repository_owner }}/flutter-build:latest-arm64
-
-          # Also create manifest for branch-specific tags
-          docker buildx imagetools create -t ghcr.io/${{ github.repository_owner }}/flutter-build:main \
-            ghcr.io/${{ github.repository_owner }}/flutter-build:main-amd64 \
-            ghcr.io/${{ github.repository_owner }}/flutter-build:main-arm64
+          # Create and push the latest tag manifest
+          docker buildx imagetools create -t $REPOSITORY:latest \
+            $REPOSITORY:latest-amd64 \
+            $REPOSITORY:latest-arm64
+          
+          # Create and push the main branch tag manifest
+          docker buildx imagetools create -t $REPOSITORY:main \
+            $REPOSITORY:main-amd64 \
+            $REPOSITORY:main-arm64
