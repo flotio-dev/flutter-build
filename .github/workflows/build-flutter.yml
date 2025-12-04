@@ -74,8 +74,6 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
-  ---
-
   create-manifest:
     needs: build-and-push
     runs-on: ubuntu-latest
