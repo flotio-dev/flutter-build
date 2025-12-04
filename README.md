@@ -1,225 +1,278 @@
-# Flutter Build System - Build Directory
+# Flutter Build Docker Image
 
-Ce dossier contient les fichiers nécessaires pour construire l'image Docker du système de build Flutter.
+Docker image for building Flutter applications (Android, iOS, Web) with S3-compatible storage upload support.
 
-## Fichiers
-
-- **`flutter-build.Dockerfile`** : Dockerfile pour créer l'image de build
-- **`build.sh`** : Script de build exécuté dans le conteneur
-- **`build-image.sh`** : Script helper pour construire et publier l'image Docker
-- **`.dockerignore`** : Fichiers à exclure du contexte Docker
-
-## Construction de l'image
-
-### Méthode simple
+## 🚀 Quick Start
 
 ```bash
-cd build/
-./build-image.sh
-```
-
-Le script va :
-1. Construire l'image Docker
-2. Afficher les informations sur l'image
-3. Demander si vous voulez la pousser vers un registry
-
-### Méthode manuelle
-
-```bash
-cd build/
-docker build -f flutter-build.Dockerfile -t flotio/flutter-build:latest .
-```
-
-### Configuration personnalisée
-
-Vous pouvez personnaliser la construction avec des variables d'environnement :
-
-```bash
-# Nom de l'image personnalisé
-export DOCKER_IMAGE_NAME="my-company/flutter-build"
-
-# Tag personnalisé
-export DOCKER_IMAGE_TAG="v1.0.0"
-
-# Registry privé
-export DOCKER_REGISTRY="registry.example.com"
-
-# Credentials pour le registry
-export DOCKER_USERNAME="myuser"
-export DOCKER_PASSWORD="mypassword"
-
-./build-image.sh
-```
-
-## Publication sur un registry
-
-### Docker Hub
-
-```bash
-docker login
-docker tag flotio/flutter-build:latest yourusername/flutter-build:latest
-docker push yourusername/flutter-build:latest
-```
-
-### Registry privé
-
-```bash
-docker login registry.example.com
-docker tag flotio/flutter-build:latest registry.example.com/flutter-build:latest
-docker push registry.example.com/flutter-build:latest
-```
-
-### Google Container Registry (GCR)
-
-```bash
-gcloud auth configure-docker
-docker tag flotio/flutter-build:latest gcr.io/your-project/flutter-build:latest
-docker push gcr.io/your-project/flutter-build:latest
-```
-
-### Amazon ECR
-
-```bash
-aws ecr get-login-password --region region | docker login --username AWS --password-stdin aws_account_id.dkr.ecr.region.amazonaws.com
-docker tag flotio/flutter-build:latest aws_account_id.dkr.ecr.region.amazonaws.com/flutter-build:latest
-docker push aws_account_id.dkr.ecr.region.amazonaws.com/flutter-build:latest
-```
-
-## Utilisation dans Kubernetes
-
-Une fois l'image publiée, configurez votre système pour l'utiliser :
-
-```bash
-export FLUTTER_BUILD_IMAGE="votreregistry/flutter-build:latest"
-```
-
-Ou dans votre code Go :
-
-```go
-os.Setenv("FLUTTER_BUILD_IMAGE", "votreregistry/flutter-build:latest")
-```
-
-## Personnalisation du Dockerfile
-
-### Changer la version de Flutter
-
-Éditez `flutter-build.Dockerfile` :
-
-```dockerfile
-ENV FLUTTER_VERSION=3.16.0  # Version spécifique
-# ou
-ENV FLUTTER_VERSION=stable  # Canal stable
-ENV FLUTTER_VERSION=beta    # Canal beta
-```
-
-### Ajouter des outils supplémentaires
-
-```dockerfile
-RUN apt-get update && apt-get install -y \
-    your-tool \
-    another-tool \
-    && rm -rf /var/lib/apt/lists/*
-```
-
-### Changer la version d'Android SDK
-
-```dockerfile
-ENV ANDROID_BUILD_TOOLS_VERSION=33.0.0
-ENV ANDROID_PLATFORMS_VERSION=33
-```
-
-## Personnalisation du script de build
-
-Le script `build.sh` supporte plusieurs variables d'environnement. Voir la documentation complète dans `docs/FLUTTER_BUILD_SYSTEM.md`.
-
-### Ajouter des étapes de build
-
-Éditez `build.sh` et ajoutez vos étapes :
-
-```bash
-# Avant le build
-echo "Running custom pre-build steps..."
-# Vos commandes ici
-
-# Après le build
-echo "Running custom post-build steps..."
-# Upload vers S3, notification, etc.
-```
-
-## Tests locaux
-
-Pour tester l'image localement sans Kubernetes :
-
-```bash
-# Construire l'image
-docker build -f flutter-build.Dockerfile -t flutter-build-test .
-
-# Exécuter un build de test
 docker run --rm \
-  -e GIT_REPO="https://github.com/flutter/flutter.git" \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
   -e PLATFORM="android" \
-  -e BUILD_ID="test-1" \
-  -e BUILD_FOLDER="examples/hello_world" \
+  -e BUILD_ID="build-001" \
   -v $(pwd)/outputs:/outputs \
-  flutter-build-test
+  ghcr.io/flotio-dev/flutter-build:latest
 ```
 
-## Dépannage
+## 📋 Environment Variables
 
-### L'image est trop grosse
+### Required Variables
 
-L'image complète fait environ 4-6 GB en raison de l'Android SDK. Pour réduire :
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GIT_REPO` | Git repository URL | `https://github.com/user/app.git` |
+| `PLATFORM` | Target platform: `android`, `ios`, `web` | `android` |
+| `BUILD_ID` | Unique build identifier | `build-123` |
 
-1. Utilisez des builds multi-stage
-2. Supprimez les composants SDK non utilisés
-3. Utilisez une image de base plus légère
+### Git Configuration
 
-### Le build échoue
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GIT_BRANCH` | `main` | Branch to clone |
+| `GIT_USERNAME` | - | Git username (for private repos) |
+| `GIT_PASSWORD` | - | Git password/token (for private repos) |
 
-Vérifiez :
+### Build Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BUILD_FOLDER` | `.` (root) | Subfolder containing Flutter project |
+| `BUILD_MODE` | `release` | Build mode: `debug`, `profile`, `release` |
+| `BUILD_TARGET` | `apk` | Android target: `apk`, `appbundle` (or `aab`) |
+| `FLUTTER_CHANNEL` | `stable` | Flutter channel: `stable`, `beta`, `master` |
+| `OUTPUT_DIR` | `/outputs` | Output directory for artifacts |
+
+### Android Signing (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KEYSTORE_PATH` | - | Path to keystore file (mount as volume) |
+| `KEYSTORE_PASSWORD` | `android` | Keystore password |
+| `KEY_PASSWORD` | `android` | Key password |
+| `KEY_ALIAS` | `key` | Key alias |
+
+### S3 Upload (Optional - Garage/MinIO/AWS S3)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AWS_S3_BUCKET` | - | S3 bucket name (enables upload when set) |
+| `AWS_S3_PREFIX` | `builds` | Folder prefix in bucket |
+| `AWS_S3_ENDPOINT` | - | Custom S3 endpoint URL (for Garage/MinIO) |
+| `AWS_REGION` | `garage` | AWS region (can be any value for Garage) |
+| `AWS_ACCESS_KEY_ID` | - | S3 access key |
+| `AWS_SECRET_ACCESS_KEY` | - | S3 secret key |
+
+### Environment Files
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENV_FILES_DIR` | `/env-files` | Directory with environment files to inject |
+
+## 📦 Examples
+
+### Build Android APK
 
 ```bash
-# Construire sans cache
-docker build --no-cache -f flutter-build.Dockerfile -t flutter-build-test .
-
-# Voir les logs complets
-docker build --progress=plain -f flutter-build.Dockerfile -t flutter-build-test .
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -e BUILD_MODE="release" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
 ```
 
-### Le script build.sh n'est pas trouvé
-
-Assurez-vous que :
-- `build.sh` est dans le même dossier que le Dockerfile
-- Le fichier a les permissions d'exécution (`chmod +x build.sh`)
-- Le `.dockerignore` n'exclut pas `build.sh`
-
-## Mise à jour
-
-Pour mettre à jour l'image avec les dernières dépendances :
+### Build Android App Bundle (AAB)
 
 ```bash
-cd build/
-
-# Reconstruire sans cache
-docker build --no-cache --pull -f flutter-build.Dockerfile -t flotio/flutter-build:latest .
-
-# Pousser la nouvelle version
-docker push flotio/flutter-build:latest
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="android" \
+  -e BUILD_TARGET="appbundle" \
+  -e BUILD_ID="$(date +%s)" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
 ```
 
-## Versions multiples
-
-Vous pouvez maintenir plusieurs versions de l'image :
+### Build from Private Repository
 
 ```bash
-# Stable
-docker build -f flutter-build.Dockerfile -t flotio/flutter-build:stable .
-
-# Beta
-docker build -f flutter-build.Dockerfile -t flotio/flutter-build:beta \
-  --build-arg FLUTTER_VERSION=beta .
-
-# Version spécifique
-docker build -f flutter-build.Dockerfile -t flotio/flutter-build:3.16.0 \
-  --build-arg FLUTTER_VERSION=3.16.0 .
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/private-app.git" \
+  -e GIT_USERNAME="your-username" \
+  -e GIT_PASSWORD="your-github-token" \
+  -e GIT_BRANCH="develop" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
 ```
+
+### Build with Android Signing
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -e KEYSTORE_PATH="/keystore/release.jks" \
+  -e KEYSTORE_PASSWORD="your-keystore-password" \
+  -e KEY_PASSWORD="your-key-password" \
+  -e KEY_ALIAS="release" \
+  -v $(pwd)/outputs:/outputs \
+  -v $(pwd)/keystore:/keystore:ro \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
+### Build with S3 Upload (Garage)
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -e AWS_S3_BUCKET="flutter-builds" \
+  -e AWS_S3_PREFIX="releases" \
+  -e AWS_S3_ENDPOINT="https://s3.garage.example.com" \
+  -e AWS_ACCESS_KEY_ID="GKxxxxxxxxxxxxxxxx" \
+  -e AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
+### Build with S3 Upload (AWS S3)
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -e AWS_S3_BUCKET="my-flutter-builds" \
+  -e AWS_S3_PREFIX="releases" \
+  -e AWS_REGION="eu-west-1" \
+  -e AWS_ACCESS_KEY_ID="AKIA..." \
+  -e AWS_SECRET_ACCESS_KEY="..." \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
+### Build Web Application
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="web" \
+  -e BUILD_ID="$(date +%s)" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
+### Build from Subfolder (Monorepo)
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/monorepo.git" \
+  -e BUILD_FOLDER="apps/mobile" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
+### Inject Environment Files
+
+Mount a directory with files to copy into the project:
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="android" \
+  -e BUILD_ID="$(date +%s)" \
+  -v $(pwd)/outputs:/outputs \
+  -v $(pwd)/env-files:/env-files:ro \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
+File naming convention for custom paths:
+- `firebase.json` → copied to project root
+- `lib__config.dart::lib__config.dart` → copied to `lib/config.dart`
+
+## 🏗️ Building the Image
+
+### Build locally
+
+```bash
+docker build -f flutter-build.Dockerfile -t flutter-build:local .
+```
+
+### Build for multiple architectures
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -f flutter-build.Dockerfile \
+  -t ghcr.io/flotio-dev/flutter-build:latest \
+  --push .
+```
+
+## 📁 Output Structure
+
+After a successful build:
+
+```
+/outputs/
+├── app-{BUILD_ID}.apk          # Android APK (or .aab for appbundle)
+├── ios-build-{BUILD_ID}.tar.gz # iOS build (compressed)
+├── web-build-{BUILD_ID}.tar.gz # Web build (compressed)
+└── build-info.json             # Build metadata
+```
+
+### build-info.json
+
+```json
+{
+  "build_id": "build-123",
+  "platform": "android",
+  "build_mode": "release",
+  "build_target": "apk",
+  "flutter_channel": "stable",
+  "git_repo": "https://github.com/user/app.git",
+  "git_branch": "main",
+  "build_folder": "",
+  "timestamp": "2025-12-04T10:30:00Z",
+  "flutter_version": "Flutter 3.35.7",
+  "s3_bucket": "flutter-builds",
+  "s3_prefix": "releases",
+  "s3_endpoint": "https://s3.garage.example.com"
+}
+```
+
+## 🔧 Troubleshooting
+
+### Build fails with Dart version mismatch
+
+The image automatically detects required Dart version from `pubspec.yaml` and attempts to switch Flutter versions. If this fails:
+
+1. Check your `pubspec.yaml` SDK constraints
+2. Consider using a specific Flutter version image tag
+3. Use FVM in your project for version management
+
+### Memory issues during build
+
+Increase Docker memory limit:
+
+```bash
+docker run --rm -m 8g \
+  -e GIT_REPO="..." \
+  ...
+```
+
+### S3 upload fails
+
+1. Verify credentials are correct
+2. Check endpoint URL format (include `https://`)
+3. Ensure bucket exists and is accessible
+4. Check network connectivity from container
+
+## 📄 License
+
+MIT
