@@ -137,6 +137,7 @@ RUN apt-get autoremove -y \
 
 # Install FVM (Flutter Version Management) as root
 ENV FVM_HOME=/opt/fvm
+ENV FVM_ALLOW_ROOT=true
 RUN curl -fsSL https://fvm.app/install.sh | bash && \
     mkdir -p $FVM_HOME && \
     chmod 755 $FVM_HOME
