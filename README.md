@@ -1,6 +1,6 @@
 # Flutter Build Docker Image
 
-Docker image for building Flutter applications (Android, iOS, Web) with S3-compatible storage upload support.
+Single Docker image for building Flutter applications across Android, Linux Desktop, and Web, with S3-compatible storage upload support.
 
 ## 🚀 Quick Start
 
@@ -20,7 +20,7 @@ docker run --rm \
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `GIT_REPO` | Git repository URL | `https://github.com/user/app.git` |
-| `PLATFORM` | Target platform: `android`, `ios`, `web` | `android` |
+| `PLATFORM` | Target platform: `android`, `linux`, `web` | `android` |
 | `BUILD_ID` | Unique build identifier | `build-123` |
 
 ### Git Configuration
@@ -38,6 +38,8 @@ docker run --rm \
 | `BUILD_FOLDER` | `.` (root) | Subfolder containing Flutter project |
 | `BUILD_MODE` | `release` | Build mode: `debug`, `profile`, `release` |
 | `BUILD_TARGET` | `apk` | Android target: `apk`, `appbundle` (or `aab`) |
+| `ANDROID_SKIP_BUILD_DEPENDENCY_VALIDATION` | `true` | Add Flutter flag `--android-skip-build-dependency-validation` for Android builds |
+| `ANDROID_AUTO_FIX_MIN_SDK` | `true` | Automatically bump Android `minSdk` to 23 when lower in `android/app/build.gradle(.kts)` |
 | `FLUTTER_CHANNEL` | `stable` | Flutter channel: `stable`, `beta`, `master` |
 | `OUTPUT_DIR` | `/outputs` | Output directory for artifacts |
 
@@ -166,6 +168,17 @@ docker run --rm \
   ghcr.io/flotio-dev/flutter-build:latest
 ```
 
+### Build Linux Desktop Application
+
+```bash
+docker run --rm \
+  -e GIT_REPO="https://github.com/user/flutter-app.git" \
+  -e PLATFORM="linux" \
+  -e BUILD_ID="$(date +%s)" \
+  -v $(pwd)/outputs:/outputs \
+  ghcr.io/flotio-dev/flutter-build:latest
+```
+
 ### Build from Subfolder (Monorepo)
 
 ```bash
@@ -221,7 +234,7 @@ After a successful build:
 ```
 /outputs/
 ├── app-{BUILD_ID}.apk          # Android APK (or .aab for appbundle)
-├── ios-build-{BUILD_ID}.tar.gz # iOS build (compressed)
+├── linux-build-{BUILD_ID}.tar.gz # Linux desktop build (compressed)
 ├── web-build-{BUILD_ID}.tar.gz # Web build (compressed)
 └── build-info.json             # Build metadata
 ```
@@ -255,6 +268,33 @@ The image automatically detects required Dart version from `pubspec.yaml` and at
 1. Check your `pubspec.yaml` SDK constraints
 2. Consider using a specific Flutter version image tag
 3. Use FVM in your project for version management
+
+### iOS builds
+
+iOS builds are not supported in this Linux container image.
+iOS requires a macOS runner with Xcode installed.
+
+### Warning about Kotlin version on Android builds
+
+If you see warnings about Kotlin version support (for example KGP 1.8.x), the image now enables
+`--android-skip-build-dependency-validation` by default for Android builds.
+
+To enforce strict validation, set:
+
+```bash
+-e ANDROID_SKIP_BUILD_DEPENDENCY_VALIDATION="false"
+```
+
+### Error `DebugMinSdkCheck` (minSdk lower than 23)
+
+The image now auto-fixes `minSdk` to `23` when it detects a lower numeric value
+in `android/app/build.gradle` or `android/app/build.gradle.kts`.
+
+To disable this behavior, set:
+
+```bash
+-e ANDROID_AUTO_FIX_MIN_SDK="false"
+```
 
 ### Memory issues during build
 
