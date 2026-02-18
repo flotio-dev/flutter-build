@@ -42,6 +42,14 @@ AWS_S3_BUCKET=${AWS_S3_BUCKET:-""}
 AWS_S3_PREFIX=${AWS_S3_PREFIX:-"builds"}
 AWS_S3_ENDPOINT=${AWS_S3_ENDPOINT:-""}
 AWS_REGION=${AWS_REGION:-"garage"}
+AWS_S3_CACHE_PREFIX=${AWS_S3_CACHE_PREFIX:-"build-cache"}
+
+# Build cache configuration
+CACHE_ENABLED=${CACHE_ENABLED:-"true"}
+CACHE_UPLOAD_ON_SUCCESS=${CACHE_UPLOAD_ON_SUCCESS:-"true"}
+CACHE_NAMESPACE=${CACHE_NAMESPACE:-"global/main"}
+CACHE_TTL_HOURS=${CACHE_TTL_HOURS:-"336"}
+CACHE_INCLUDE_ANDROID_INTERMEDIATES=${CACHE_INCLUDE_ANDROID_INTERMEDIATES:-"true"}
 
 echo -e "${YELLOW}Build Configuration:${NC}"
 echo "  Git Repository: $GIT_REPO"
@@ -51,7 +59,153 @@ echo "  Platform: $PLATFORM"
 echo "  Build Mode: $BUILD_MODE"
 echo "  Build Target: $BUILD_TARGET"
 [ -n "$TARGET_FLUTTER_VERSION" ] && echo "  Target Flutter Version: $TARGET_FLUTTER_VERSION"
+echo "  Cache Enabled: $CACHE_ENABLED"
+echo "  Cache Namespace: $CACHE_NAMESPACE"
 echo ""
+
+is_true() {
+    local value
+    value=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    [ "$value" = "true" ] || [ "$value" = "1" ] || [ "$value" = "yes" ] || [ "$value" = "on" ]
+}
+
+compute_cache_key() {
+    local lock_files=(
+        "pubspec.lock"
+        "android/gradle/wrapper/gradle-wrapper.properties"
+        "android/build.gradle"
+        "android/build.gradle.kts"
+        "android/app/build.gradle"
+        "android/app/build.gradle.kts"
+    )
+
+    local fingerprint_source=""
+    local lock_hash
+    for lock_file in "${lock_files[@]}"; do
+        if [ -f "$lock_file" ]; then
+            lock_hash=$(sha256sum "$lock_file" | awk '{print $1}')
+            fingerprint_source+="${lock_file}:${lock_hash}\n"
+        fi
+    done
+
+    if [ -z "$fingerprint_source" ]; then
+        fingerprint_source="${GIT_BRANCH}:${PLATFORM}:${BUILD_MODE}:${BUILD_TARGET}"
+    fi
+
+    local fingerprint
+    fingerprint=$(printf "%b" "$fingerprint_source" | sha256sum | awk '{print $1}')
+    echo "${CACHE_NAMESPACE}/${fingerprint}"
+}
+
+aws_s3_sync_best_effort() {
+    local source_path="$1"
+    local destination_path="$2"
+
+    if [ -n "$AWS_S3_ENDPOINT" ]; then
+        aws s3 sync "$source_path" "$destination_path" --region "$AWS_REGION" --endpoint-url "$AWS_S3_ENDPOINT" >/dev/null 2>&1 || return 1
+        return 0
+    fi
+
+    aws s3 sync "$source_path" "$destination_path" --region "$AWS_REGION" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+restore_cache_if_enabled() {
+    if ! is_true "$CACHE_ENABLED"; then
+        echo "  Cache restore disabled"
+        return
+    fi
+
+    if [ -z "$AWS_S3_BUCKET" ]; then
+        echo "  Cache restore skipped (AWS_S3_BUCKET not configured)"
+        return
+    fi
+
+    local pub_cache_dir
+    pub_cache_dir="${PUB_CACHE:-$HOME/.pub-cache}"
+    local gradle_cache_dir
+    gradle_cache_dir="${GRADLE_USER_HOME:-$HOME/.gradle}"
+    local intermediates_dir
+    intermediates_dir="$(pwd)/build/app/intermediates"
+
+    mkdir -p "$pub_cache_dir" "$gradle_cache_dir" "$intermediates_dir"
+
+    local cache_key
+    cache_key=$(compute_cache_key)
+    local cache_s3_base
+    cache_s3_base="s3://${AWS_S3_BUCKET}/${AWS_S3_CACHE_PREFIX}/${cache_key}"
+
+    echo "  Cache key: $cache_key"
+
+    if aws_s3_sync_best_effort "${cache_s3_base}/pub-cache/" "$pub_cache_dir/"; then
+        echo "  ✓ Pub cache restored"
+    else
+        echo "  • No pub cache to restore"
+    fi
+
+    if aws_s3_sync_best_effort "${cache_s3_base}/gradle/" "$gradle_cache_dir/"; then
+        echo "  ✓ Gradle cache restored"
+    else
+        echo "  • No Gradle cache to restore"
+    fi
+
+    if [ "$PLATFORM" = "android" ] && is_true "$CACHE_INCLUDE_ANDROID_INTERMEDIATES"; then
+        if aws_s3_sync_best_effort "${cache_s3_base}/android-intermediates/" "$intermediates_dir/"; then
+            echo "  ✓ Android intermediates restored"
+        else
+            echo "  • No Android intermediates cache to restore"
+        fi
+    fi
+
+    export BUILD_CACHE_KEY="$cache_key"
+}
+
+save_cache_if_enabled() {
+    if ! is_true "$CACHE_ENABLED"; then
+        echo "  Cache upload disabled"
+        return
+    fi
+
+    if ! is_true "$CACHE_UPLOAD_ON_SUCCESS"; then
+        echo "  Cache upload policy disabled"
+        return
+    fi
+
+    if [ -z "$AWS_S3_BUCKET" ]; then
+        echo "  Cache upload skipped (AWS_S3_BUCKET not configured)"
+        return
+    fi
+
+    local pub_cache_dir
+    pub_cache_dir="${PUB_CACHE:-$HOME/.pub-cache}"
+    local gradle_cache_dir
+    gradle_cache_dir="${GRADLE_USER_HOME:-$HOME/.gradle}"
+    local intermediates_dir
+    intermediates_dir="$(pwd)/build/app/intermediates"
+
+    local cache_key
+    cache_key="${BUILD_CACHE_KEY:-$(compute_cache_key)}"
+    local cache_s3_base
+    cache_s3_base="s3://${AWS_S3_BUCKET}/${AWS_S3_CACHE_PREFIX}/${cache_key}"
+
+    echo "  Cache key: $cache_key"
+
+    if [ -d "$pub_cache_dir" ]; then
+        aws_s3_sync_best_effort "$pub_cache_dir/" "${cache_s3_base}/pub-cache/" && echo "  ✓ Pub cache uploaded"
+    fi
+
+    if [ -d "$gradle_cache_dir" ]; then
+        aws_s3_sync_best_effort "$gradle_cache_dir/" "${cache_s3_base}/gradle/" && echo "  ✓ Gradle cache uploaded"
+    fi
+
+    if [ "$PLATFORM" = "android" ] && is_true "$CACHE_INCLUDE_ANDROID_INTERMEDIATES" && [ -d "$intermediates_dir" ]; then
+        aws_s3_sync_best_effort "$intermediates_dir/" "${cache_s3_base}/android-intermediates/" && echo "  ✓ Android intermediates uploaded"
+    fi
+
+    if [ -n "$CACHE_TTL_HOURS" ]; then
+        echo "  Cache TTL target: ${CACHE_TTL_HOURS}h (appliqué via lifecycle bucket)"
+    fi
+}
 
 # Step 1: Clone repository
 echo -e "${GREEN}[1/8] Cloning repository...${NC}"
@@ -109,6 +263,9 @@ if [ -d "$ENV_FILES_DIR" ] && [ "$(ls -A $ENV_FILES_DIR)" ]; then
 else
     echo "  No environment files to process"
 fi
+
+echo -e "${GREEN}[cache] Restoring dependency cache...${NC}"
+restore_cache_if_enabled
 
 # Step 4: Setup Android keystore if provided
 if [ "$PLATFORM" = "android" ] && [ -f "$KEYSTORE_PATH" ]; then
@@ -240,6 +397,9 @@ if [ -n "$AWS_S3_BUCKET" ]; then
 else
     echo -e "${GREEN}[8/8] Skipping S3 upload${NC}"
 fi
+
+echo -e "${GREEN}[cache] Uploading dependency cache...${NC}"
+save_cache_if_enabled
 
 echo -e "${GREEN}===========================================${NC}"
 echo -e "${GREEN}Build completed successfully!${NC}"
