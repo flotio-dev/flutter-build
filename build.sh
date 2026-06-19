@@ -267,21 +267,78 @@ fi
 echo -e "${GREEN}[cache] Restoring dependency cache...${NC}"
 restore_cache_if_enabled
 
-# Step 4: Setup Android keystore if provided
-if [ "$PLATFORM" = "android" ] && [ -f "$KEYSTORE_PATH" ]; then
-    echo -e "${GREEN}[4/8] Setting up Android keystore...${NC}"
-    
-    # FIX: Path relative to the current project directory, not absolute workspace
-    KEY_PROPERTIES_PATH="$(pwd)/android/key.properties"
-    
-    mkdir -p "$(dirname "$KEY_PROPERTIES_PATH")"
-    cat > "$KEY_PROPERTIES_PATH" << EOF
+# Step 4: Setup Android keystore (always create key.properties for Gradle compat)
+ensure_keystore_properties() {
+    local gradle_file gradle_kts_file key_props project_dir
+    project_dir="$(pwd)"
+    key_props="${project_dir}/android/key.properties"
+
+    # 1. Always create key.properties so Gradle files that reference it compile.
+    #    Even an empty file makes keystorePropertiesFile.exists() return false cleanly.
+    mkdir -p "$(dirname "$key_props")"
+
+    if [ -f "$KEYSTORE_PATH" ]; then
+        echo "  • Keystore provided, configuring signing..."
+        cat > "$key_props" << EOF
 storePassword=${KEYSTORE_PASSWORD:-android}
 keyPassword=${KEY_PASSWORD:-android}
 keyAlias=${KEY_ALIAS:-key}
 storeFile=$KEYSTORE_PATH
 EOF
-    echo "  ✓ Keystore configured at: $KEY_PROPERTIES_PATH"
+        echo "  ✓ Keystore configured at: $key_props"
+    else
+        echo "  • No keystore provided"
+        # Create an empty key.properties — Gradle needs the file to exist even
+        # if all properties are blank (so .exists() returns true but props are empty).
+        if [ ! -f "$key_props" ]; then
+            touch "$key_props"
+            echo "  ✓ Created empty $key_props (no signing configured)"
+        fi
+    fi
+
+    # 2. Patch build.gradle / build.gradle.kts if they reference keystorePropertiesFile
+    #    without defining it (common in projects that weren't set up with 'flutter create').
+    gradle_file="${project_dir}/android/app/build.gradle"
+    gradle_kts_file="${project_dir}/android/app/build.gradle.kts"
+
+    for gradle in "$gradle_file" "$gradle_kts_file"; do
+        [ ! -f "$gradle" ] && continue
+        if grep -q 'keystorePropertiesFile' "$gradle" && ! grep -q 'def keystorePropertiesFile\|val keystorePropertiesFile' "$gradle"; then
+            echo "  ⚠ keystorePropertiesFile referenced but not defined in $(basename "$gradle") — injecting definition"
+
+            # Choose Groovy or Kotlin DSL syntax based on file extension.
+            local keystore_props_block
+            if [[ "$gradle" == *.kts ]]; then
+                # Kotlin DSL
+                keystore_props_block='import java.io.FileInputStream\nimport java.util.Properties\n\nval keystoreProperties = Properties()\nval keystorePropertiesFile = rootProject.file("key.properties")\nif (keystorePropertiesFile.exists()) {\n    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n}\n'
+            else
+                # Groovy DSL
+                keystore_props_block='def keystorePropertiesFile = rootProject.file("key.properties")\ndef keystoreProperties = new Properties()\nif (keystorePropertiesFile.exists()) {\n    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n}\n'
+            fi
+
+            local tmpfile
+            tmpfile=$(mktemp)
+            if grep -q '^import ' "$gradle"; then
+                # Insert after last import
+                local last_import_line
+                last_import_line=$(grep -n '^import ' "$gradle" | tail -1 | cut -d: -f1)
+                head -n "$last_import_line" "$gradle" > "$tmpfile"
+                printf '%b' "$keystore_props_block" >> "$tmpfile"
+                tail -n +$((last_import_line + 1)) "$gradle" >> "$tmpfile"
+            else
+                # No imports: insert at top
+                printf '%b' "$keystore_props_block" > "$tmpfile"
+                cat "$gradle" >> "$tmpfile"
+            fi
+            mv "$tmpfile" "$gradle"
+            echo "  ✓ Patched $(basename "$gradle")"
+        fi
+    done
+}
+
+if [ "$PLATFORM" = "android" ]; then
+    echo -e "${GREEN}[4/8] Setting up Android keystore...${NC}"
+    ensure_keystore_properties
 else
     echo -e "${GREEN}[4/8] Skipping keystore setup${NC}"
 fi
