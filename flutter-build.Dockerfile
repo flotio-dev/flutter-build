@@ -2,17 +2,21 @@
 # Includes Android SDK, Java, Flutter (Full Clone) and all necessary build tools
 # Multi-architecture support (amd64/arm64)
 
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc AS builder
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Define versions
 ENV FLUTTER_VERSION=3.35.7
-ENV ANDROID_SDK_VERSION=9477386
-ENV ANDROID_BUILD_TOOLS_VERSION=34.0.0
-ENV ANDROID_PLATFORMS_VERSION=34
+ENV FLUTTER_REVISION=adc901062556672b4138e18a4dc62a4be8f4b3c2
+ENV ANDROID_SDK_VERSION=15859902
+ENV ANDROID_SDK_SHA256=4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+ENV ANDROID_BUILD_TOOLS_VERSION=36.0.0
+ENV ANDROID_PLATFORMS_VERSION=36
+ENV ANDROID_NDK_VERSION=27.0.12077973
 ENV JAVA_VERSION=17
+ENV AWS_CLI_VERSION=2.36.25
 
 # Detect architecture for Android SDK
 ARG TARGETARCH
@@ -25,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clang cmake ninja-build pkg-config libgtk-3-0 liblzma5 libstdc++6 \
     libglib2.0-0 libsqlite3-0 libgtk-3-dev libsqlite3-dev \
     file ccache python3 python3-pip \
-    && curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip" \
+    && curl -fsSLo awscliv2.zip "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m)-${AWS_CLI_VERSION}.zip" \
     && unzip -q awscliv2.zip && ./aws/install && rm -rf awscliv2.zip aws \
     && apt-get autoremove -y && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -39,13 +43,25 @@ ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=$ANDROID_HOME
 ENV PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS_VERSION}
 
+ARG NDK_SETUPTOOLS_VERSION=84.0.0
+ARG NDK_SETUPTOOLS_SHA256=51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+
 RUN mkdir -p $ANDROID_HOME/cmdline-tools && cd $ANDROID_HOME/cmdline-tools \
     && wget -q https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip \
+    && echo "${ANDROID_SDK_SHA256}  commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip" | sha256sum -c - \
     && unzip -q commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip \
     && rm commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip \
     && mv cmdline-tools latest && rm -rf latest/NOTICE.txt \
     && yes | sdkmanager --licenses \
-    && sdkmanager --install "platform-tools" "platforms;android-${ANDROID_PLATFORMS_VERSION}" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "ndk;25.1.8937393" \
+    && sdkmanager --install "platform-tools" "platforms;android-${ANDROID_PLATFORMS_VERSION}" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "ndk;${ANDROID_NDK_VERSION}" \
+    && setuptools_wheel="/tmp/setuptools-${NDK_SETUPTOOLS_VERSION}-py3-none-any.whl" \
+    && curl -fsSLo "$setuptools_wheel" "https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-${NDK_SETUPTOOLS_VERSION}-py3-none-any.whl" \
+    && echo "${NDK_SETUPTOOLS_SHA256}  $setuptools_wheel" | sha256sum -c - \
+    && ndk_site="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/python3/lib/python3.11/site-packages" \
+    && rm -rf "$ndk_site"/setuptools "$ndk_site"/setuptools-*.dist-info "$ndk_site"/_distutils_hack "$ndk_site"/distutils-precedence.pth \
+    && python3 -m pip install --no-index --target "$ndk_site" "$setuptools_wheel" \
+    && grep -qx "Version: ${NDK_SETUPTOOLS_VERSION}" "$ndk_site/setuptools-${NDK_SETUPTOOLS_VERSION}.dist-info/METADATA" \
+    && rm -f "$setuptools_wheel" \
     && rm -rf $ANDROID_HOME/tools $ANDROID_HOME/emulator $ANDROID_HOME/system-images $ANDROID_HOME/sources \
     && rm -rf $ANDROID_HOME/ndk/*/prebuilt/android-* $ANDROID_HOME/ndk/*/simpleperf $ANDROID_HOME/ndk/*/shader-tools \
     && find $ANDROID_HOME -name "*.jar.orig" -delete \
@@ -55,8 +71,9 @@ RUN mkdir -p $ANDROID_HOME/cmdline-tools && cd $ANDROID_HOME/cmdline-tools \
 ENV FLUTTER_HOME=/opt/flutter
 ENV PATH=$PATH:$FLUTTER_HOME/bin
 
-RUN git clone https://github.com/flutter/flutter.git -b ${FLUTTER_VERSION} $FLUTTER_HOME \
+RUN git clone https://github.com/flutter/flutter.git $FLUTTER_HOME \
     && cd $FLUTTER_HOME \
+    && git checkout --detach ${FLUTTER_REVISION} \
     && git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" \
     && flutter config --no-analytics --enable-linux-desktop --enable-web \
     && flutter precache --android --linux --web --no-ios --no-windows --no-macos \
@@ -74,14 +91,16 @@ RUN mkdir -p $GRADLE_USER_HOME \
 # 5. Install FVM and set up non-root user properly (CRITICAL FIX)
 ENV FVM_HOME=/opt/fvm
 ENV FVM_CACHE_PATH=/opt/fvm/versions
-RUN curl -fsSL https://fvm.app/install.sh | bash \
+ENV PUB_CACHE=/opt/pub-cache
+RUN dart pub global activate fvm 4.1.2 \
     && groupadd -r flutter -g 1000 \
     && useradd -r -u 1000 -g flutter -m -s /bin/bash flutter \
     && mkdir -p $FVM_HOME/versions /workspace /outputs \
-    && chown -R flutter:flutter $FLUTTER_HOME $ANDROID_HOME $GRADLE_USER_HOME $FVM_HOME /workspace /outputs
+    && chown flutter:flutter /opt \
+    && chown -R flutter:flutter $FLUTTER_HOME $ANDROID_HOME $GRADLE_USER_HOME $FVM_HOME $PUB_CACHE /workspace /outputs
 
 # Put FVM binaries and standard pub cache in PATH for the flutter user
-ENV PATH="/home/flutter/.pub-cache/bin:$PATH"
+ENV PATH="$PUB_CACHE/bin:/home/flutter/.pub-cache/bin:$PATH"
 
 # Copy build script
 COPY build.sh /usr/local/bin/build.sh

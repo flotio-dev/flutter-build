@@ -1,0 +1,111 @@
+# Image-only, time-bounded exceptions. The source scan uses .trivyignore.yaml.
+#
+# Owner: flotio-dev repository maintainers
+# Expires: 2026-11-18
+# Scope: linux-libc-dev UAPI header package in this build-tool image.
+# Justification: these IDs describe host-kernel code, while the container only
+# ships compile-time headers and always uses the runner/cluster host kernel.
+# Ubuntu currently marks these findings affected with no fixed package.
+CVE-2022-49359 exp:2026-11-18
+CVE-2022-49910 exp:2026-11-18
+CVE-2022-49935 exp:2026-11-18
+CVE-2022-50095 exp:2026-11-18
+CVE-2022-50212 exp:2026-11-18
+CVE-2022-50213 exp:2026-11-18
+CVE-2022-50234 exp:2026-11-18
+CVE-2023-52926 exp:2026-11-18
+CVE-2024-53179 exp:2026-11-18
+CVE-2024-56692 exp:2026-11-18
+CVE-2024-57857 exp:2026-11-18
+CVE-2025-21759 exp:2026-11-18
+CVE-2025-21812 exp:2026-11-18
+CVE-2025-21947 exp:2026-11-18
+CVE-2025-22040 exp:2026-11-18
+CVE-2025-22041 exp:2026-11-18
+CVE-2025-37777 exp:2026-11-18
+CVE-2025-37899 exp:2026-11-18
+CVE-2025-37926 exp:2026-11-18
+CVE-2025-37952 exp:2026-11-18
+CVE-2025-38349 exp:2026-11-18
+CVE-2025-38437 exp:2026-11-18
+CVE-2025-38552 exp:2026-11-18
+CVE-2025-39863 exp:2026-11-18
+CVE-2025-39952 exp:2026-11-18
+CVE-2025-40190 exp:2026-11-18
+CVE-2025-71073 exp:2026-11-18
+CVE-2025-71315 exp:2026-11-18
+CVE-2026-23004 exp:2026-11-18
+CVE-2026-23171 exp:2026-11-18
+CVE-2026-23191 exp:2026-11-18
+CVE-2026-23208 exp:2026-11-18
+CVE-2026-23226 exp:2026-11-18
+CVE-2026-23240 exp:2026-11-18
+CVE-2026-23271 exp:2026-11-18
+CVE-2026-23378 exp:2026-11-18
+CVE-2026-23393 exp:2026-11-18
+CVE-2026-23449 exp:2026-11-18
+CVE-2026-31403 exp:2026-11-18
+CVE-2026-31432 exp:2026-11-18
+CVE-2026-31449 exp:2026-11-18
+CVE-2026-31502 exp:2026-11-18
+CVE-2026-31516 exp:2026-11-18
+CVE-2026-31536 exp:2026-11-18
+CVE-2026-31548 exp:2026-11-18
+CVE-2026-31663 exp:2026-11-18
+CVE-2026-31678 exp:2026-11-18
+CVE-2026-31700 exp:2026-11-18
+CVE-2026-31706 exp:2026-11-18
+CVE-2026-31708 exp:2026-11-18
+CVE-2026-31709 exp:2026-11-18
+CVE-2026-31712 exp:2026-11-18
+CVE-2026-31729 exp:2026-11-18
+CVE-2026-43009 exp:2026-11-18
+CVE-2026-43016 exp:2026-11-18
+CVE-2026-43049 exp:2026-11-18
+CVE-2026-43091 exp:2026-11-18
+CVE-2026-43116 exp:2026-11-18
+CVE-2026-43153 exp:2026-11-18
+CVE-2026-43214 exp:2026-11-18
+CVE-2026-43437 exp:2026-11-18
+CVE-2026-43456 exp:2026-11-18
+CVE-2026-43490 exp:2026-11-18
+CVE-2026-45850 exp:2026-11-18
+CVE-2026-46320 exp:2026-11-18
+CVE-2026-52909 exp:2026-11-18
+CVE-2026-52910 exp:2026-11-18
+CVE-2026-53033 exp:2026-11-18
+CVE-2026-53036 exp:2026-11-18
+CVE-2026-53090 exp:2026-11-18
+CVE-2026-53148 exp:2026-11-18
+CVE-2026-53159 exp:2026-11-18
+CVE-2026-53178 exp:2026-11-18
+CVE-2026-53185 exp:2026-11-18
+CVE-2026-53186 exp:2026-11-18
+CVE-2026-53196 exp:2026-11-18
+CVE-2026-53198 exp:2026-11-18
+CVE-2026-53224 exp:2026-11-18
+CVE-2026-53239 exp:2026-11-18
+CVE-2026-53254 exp:2026-11-18
+CVE-2026-53256 exp:2026-11-18
+CVE-2026-53262 exp:2026-11-18
+CVE-2026-53264 exp:2026-11-18
+CVE-2026-53266 exp:2026-11-18
+CVE-2026-53269 exp:2026-11-18
+CVE-2026-53270 exp:2026-11-18
+CVE-2026-53275 exp:2026-11-18
+CVE-2026-64531 exp:2026-11-18
+
+# Owner: flotio-dev repository maintainers
+# Expires: 2026-11-18
+# Scope: libraries embedded in Google's latest official Android Command-line
+# Tools 15859902 (Kotlin compiler/lint tooling only).
+# Justification: the affected GOST cipher and remote-telnet paths are not used
+# by the non-networked Android build flow; protobuf exposure is limited to an
+# ephemeral, unprivileged CI builder with no PR secrets and a hard timeout.
+# Replacing these vendor JARs independently is unsupported; review on every
+# Android tools update and remove as soon as Google ships corrected versions.
+CVE-2021-22569 exp:2026-11-18
+CVE-2024-7254 exp:2026-11-18
+CVE-2025-14813 exp:2026-11-18
+CVE-2026-56740 exp:2026-11-18
+CVE-2026-56741 exp:2026-11-18
