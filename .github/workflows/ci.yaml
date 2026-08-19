@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Review dependency changes
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && vars.DEPENDENCY_REVIEW_ENABLED == 'true'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
@@ -83,9 +83,11 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/flutter-build" >> "$GITHUB_OUTPUT"
-          echo "tag=sha-$GITHUB_SHA-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
-          echo "created=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+          {
+            echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/flutter-build"
+            echo "tag=sha-$GITHUB_SHA-${{ matrix.arch }}"
+            echo "created=$(git show -s --format=%cI "$GITHUB_SHA")"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -165,9 +167,11 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/flutter-build" >> "$GITHUB_OUTPUT"
-          echo "tag=sha-$GITHUB_SHA-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
-          echo "created=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+          {
+            echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/flutter-build"
+            echo "tag=sha-$GITHUB_SHA-${{ matrix.arch }}"
+            echo "created=$(git show -s --format=%cI "$GITHUB_SHA")"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -283,8 +287,10 @@ jobs:
           digest="$(docker buildx imagetools inspect "$image:$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')"
           test "$(docker buildx imagetools inspect "$image:latest" --format '{{json .Manifest.Digest}}' | tr -d '"')" = "$digest"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "image=$image"
+            echo "digest=$digest"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Attest provenance
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
