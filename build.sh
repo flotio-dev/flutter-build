@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
 # Let's build a Flutter application inside a Podman/Docker container
 # Colors for output

@@ -1,0 +1,5 @@
+# No active exceptions. Future entries require an exact ID, owner,
+# justification and finite expired_at date.
+vulnerabilities: []
+misconfigurations: []
+secrets: []
