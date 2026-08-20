@@ -19,6 +19,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Vérifie la syntaxe du script de build et la qualité du Dockerfile.
   quality:
     name: Quality
     runs-on: ubuntu-24.04
@@ -30,6 +31,7 @@ jobs:
       - name: Validate build script syntax
         run: bash -n build.sh
 
+  # Contrôle les dépendances si disponible puis bloque les vulnérabilités, secrets et erreurs IaC avec Trivy.
   security-source:
     name: Source security
     runs-on: ubuntu-24.04
@@ -57,6 +59,7 @@ jobs:
           timeout: 15m
           version: v0.74.0
 
+  # Construit et scanne localement l'image pour chaque architecture sans la publier.
   platform-validation:
     name: Validate ${{ matrix.platform }}
     if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' && !(github.event_name == 'push' && github.ref_name == 'main') }}
@@ -140,6 +143,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Construit, scanne puis publie dans GHCR une image immuable pour chaque architecture.
   platform-publish:
     name: Publish ${{ matrix.platform }}
     if: github.event_name == 'push' && github.ref_name == 'main'
@@ -240,6 +244,7 @@ jobs:
           docker tag "local/flutter-build:$TAG" "$IMAGE:$TAG"
           docker push "$IMAGE:$TAG"
 
+  # Assemble les images par architecture, publie le manifeste multi-architecture et ses attestations.
   create-manifest:
     name: Publish and attest multi-arch image
     if: github.event_name == 'push' && github.ref_name == 'main'
@@ -322,6 +327,7 @@ jobs:
           DIGEST: ${{ steps.manifest.outputs.digest }}
         run: gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY"
 
+  # Associe un tag SemVer au manifeste multi-architecture lors de la création d'un tag Git.
   release-alias:
     name: Publish SemVer alias
     if: startsWith(github.ref, 'refs/tags/')
@@ -358,6 +364,7 @@ jobs:
           docker buildx imagetools create --tag "$image:$GITHUB_REF_NAME" "$source"
           test "$(docker buildx imagetools inspect "$image:$GITHUB_REF_NAME" --format '{{json .Manifest.Digest}}' | tr -d '"')" = "$digest"
 
+  # Agrège les résultats obligatoires en un check stable utilisable par la protection de branche.
   ci-success:
     name: ci-success
     if: ${{ always() }}
