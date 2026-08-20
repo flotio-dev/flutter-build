@@ -3,13 +3,17 @@
 Pull requests validate `build.sh`, scan the source and Dockerfile, then build
 and scan the real amd64 and arm64 images without publishing. Pushes to `main`
 publish those exact scanned platform images, assemble the immutable
-`ghcr.io/flotio-dev/flutter-build:sha-<full-git-sha>` manifest, attach both SPDX
-SBOMs and provenance to its digest, and verify the attestations.
+`ghcr.io/flotio-dev/flutter-build:sha-<full-git-sha>` manifest and optionally
+attach both SPDX SBOMs and provenance to its digest.
 
 `latest` is retained only as a compatibility alias for existing consumers and
 points to the same digest as the immutable SHA manifest. New consumers should
 pin `ghcr.io/flotio-dev/flutter-build@sha256:<digest>`. A strict `vX.Y.Z` tag
-adds an alias to an already-attested SHA manifest without rebuilding.
+adds an alias to the existing SHA manifest without rebuilding.
+
+Public repositories enable GitHub attestations automatically. Private repositories
+skip them unless `ATTESTATIONS_ENABLED=true`; enable that repository variable only
+when the organization plan supports private-repository attestations.
 
 No repository secret is required. `GITHUB_TOKEN` receives Packages write only
 in jobs capable of publication; OIDC and attestation permissions exist only in
