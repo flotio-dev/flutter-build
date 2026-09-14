@@ -2,7 +2,7 @@
 # Includes Android SDK, Java, Flutter (Full Clone) and all necessary build tools
 # Multi-architecture support (amd64/arm64)
 
-FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b AS builder
+FROM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d AS builder
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
